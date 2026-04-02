@@ -1,2 +1,2 @@
-# jeffplate
-updated number plate detection ni ka jeffrey
+# Plate_number_detection
+for thesis purposes
