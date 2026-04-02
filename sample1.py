@@ -3,12 +3,13 @@ import numpy as np
 from paddleocr import PaddleOCR
 from datetime import datetime
 
-ocr = PaddleOCR(use_angle_cls=True, lang='en')
+ocr = PaddleOCR(use_textline_orientation=True, lang='en')
 
-def process_video(video_path): 1usage
-    cap = cv2.VideoCapture(video_path)
+def process_video():
+    cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
+        print("Error opening webcam")
         return
 
     while True:
@@ -16,31 +17,40 @@ def process_video(video_path): 1usage
         if not ret:
             break
 
-        
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        results = ocr.ocr(rgb_frame, cls=True)
+
+        results = ocr.predict(rgb_frame)
 
         detected_texts = ""
 
         if results:
-            for line in results:
-                if line:
-                    for word_info in line:
-                        if word_info and len(word_info) >= 2:
-                            text = word_info[1][0]
-                            detected_texts += text + " "
+            for res in results:
+                boxes = res['dt_polys']
+                texts = res['rec_texts']
 
-                            cv2.polylines(frame, pts=[np.int32(box)], isClosed=True, color=(0, 255, 0), thickness=2)
+                for box, text in zip(boxes, texts):
 
-                            cv2.putText(frame, text, org=(int(box[0][0]), int(box[0][1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, fontScale= 0.5, color=(0, 0, 255), thickness=2)
+                    detected_texts += text + " "
+
+                    cv2.polylines(frame, [np.int32(box)], True, (0,255,0), 2)
+
+                    cv2.putText(frame, text,
+                                (int(box[0][0]), int(box[0][1]) - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                (0,0,255), 2)
 
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cv2.putText(frame, current_time, org=(10, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 255, 255), thickness=2)
-        cv2.putText(frame, text= "Licensed Plates:", org=(10, 80), cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
-        cv2.putText(frame, text= detected_text.strip(), org=(10, 150), cv2.FONT_HERSHEY_SIMPLEX, fontScale=2.5, color=(0, 255, 0), thickness=8)
 
-        cv2.imshow(winname= 'License Plate Recognition', cv2.resize(frame, dsize= (640, 480)))
+        cv2.putText(frame, current_time, (10,30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+
+        cv2.putText(frame, "Licensed Plates:", (10,80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+
+        cv2.putText(frame, detected_texts.strip(), (10,150),
+                    cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0,255,0), 8)
+
+        cv2.imshow("License Plate Recognition", cv2.resize(frame,(640,480)))
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -49,5 +59,4 @@ def process_video(video_path): 1usage
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    video_file_path = "path_to_your_video.mp4"
-    process_video(video_file_path)
+    process_video()

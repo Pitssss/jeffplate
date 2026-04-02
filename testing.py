@@ -5,6 +5,9 @@ import csv
 import os
 from datetime import datetime
 
+# --- FORCE STABLE CONNECTION (TCP) ---
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+
 # --- CONFIGURATION ---
 CANVAS_WIDTH = 1920
 CANVAS_HEIGHT = 1080
@@ -16,18 +19,15 @@ CAM_X, CAM_Y = 50, 150
 CAM_W, CAM_H = 1200, 700
 SIDEBAR_X = 1300
 
-# --- EXIT BUTTON COORDINATES (TOP RIGHT) ---
-# We position this relative to CANVAS_WIDTH
+# --- EXIT BUTTON COORDINATES ---
 EXIT_BTN_W, EXIT_BTN_H = 220, 60
 EXIT_BTN_X1 = CANVAS_WIDTH - EXIT_BTN_W - 30
 EXIT_BTN_Y1 = 20
 EXIT_BTN_X2 = EXIT_BTN_X1 + EXIT_BTN_W
 EXIT_BTN_Y2 = EXIT_BTN_Y1 + EXIT_BTN_H
 
-# --- MOUSE CALLBACK FUNCTION ---
 def handle_clicks(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
-        # Check if click is inside the Top-Right Exit Button
         if EXIT_BTN_X1 <= x <= EXIT_BTN_X2 and EXIT_BTN_Y1 <= y <= EXIT_BTN_Y2:
             print("System Shutdown via Exit Button.")
             os._exit(0)
@@ -56,9 +56,14 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 xml_path = os.path.join(current_dir, "haarcascade_russian_plate_number.xml")
 plateCascade = cv2.CascadeClassifier(xml_path)
 
-cap = cv2.VideoCapture(0)
-cap.set(3, 1280)
-cap.set(4, 720)
+# Using Sub-stream (102) for better stability over network
+# REPLACE 'admin' and 'your_password'
+camera_url = "rtsp://admin:Dreamteam2026@192.168.1.64:554/Streaming/Channels/102"
+
+cap = cv2.VideoCapture(camera_url)
+
+# Set a small buffer to prevent lag/decoding errors
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
 # Global Variables
 last_detected_plate = "--------"
@@ -67,29 +72,28 @@ status_color = (150, 150, 150)
 plate_crop = np.zeros((120, 350, 3), np.uint8)
 log_entry = ["-", "-", "-"]
 
-# Set up the window for Fullscreen
 win_name = "ST. MATTHEW ANPR - FULLSCREEN"
 cv2.namedWindow(win_name, cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
-# LINK THE MOUSE CLICK HANDLER
 cv2.setMouseCallback(win_name, handle_clicks)
 
 while True:
     success, img = cap.read()
-    if not success: break
+    
+    # If a frame fails, try to grab the next one instead of crashing
+    if not success:
+        print("Frame drop... retrying")
+        continue 
     
     canvas = np.full((CANVAS_HEIGHT, CANVAS_WIDTH, 3), 40, dtype=np.uint8)
 
-    # Header Bar (Orange)
+    # Header Bar
     cv2.rectangle(canvas, (0, 0), (CANVAS_WIDTH, 100), (0, 69, 255), -1)
     cv2.putText(canvas, "ST. MATTHEW ANPR SYSTEM", (600, 70), 
                 cv2.FONT_HERSHEY_DUPLEX, 2.2, (255, 255, 255), 3)
 
-    # --- DRAW EXIT BUTTON (TOP RIGHT) ---
-    # Darker red background for the button
+    # Exit Button
     cv2.rectangle(canvas, (EXIT_BTN_X1, EXIT_BTN_Y1), (EXIT_BTN_X2, EXIT_BTN_Y2), (20, 20, 180), -1)
-    # White border
     cv2.rectangle(canvas, (EXIT_BTN_X1, EXIT_BTN_Y1), (EXIT_BTN_X2, EXIT_BTN_Y2), (255, 255, 255), 2)
     cv2.putText(canvas, "EXIT SYSTEM", (EXIT_BTN_X1 + 25, EXIT_BTN_Y1 + 40), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
@@ -103,6 +107,7 @@ while True:
             plate_crop = cv2.resize(imgRoi, (350, 120))
             
             try:
+                # OCR can be slow on CPU; this is where the stream usually "piles up"
                 output = reader.readtext(imgRoi)
                 if output:
                     last_detected_plate = output[0][1].replace(" ", "").upper()
@@ -147,7 +152,6 @@ while True:
 
     cv2.imshow(win_name, canvas)
 
-    # Standard 'q' key backup
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
